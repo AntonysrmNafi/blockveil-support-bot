@@ -13,7 +13,6 @@ from telegram.ext import (
 import os
 import random
 import string
-from io import BytesIO
 
 # ================= ENV =================
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -91,7 +90,8 @@ async def user_message(update: Update, context):
     if user.id not in user_active_ticket:
         await update.message.reply_text(
             "❗ Please create a ticket first.\n\n"
-            "Click /start to create a ticket."
+            "Click /start to submit a new support ticket.\n\n"
+            "To track an existing ticket, please use the /status command to view its current status."
         )
         return
 
@@ -100,22 +100,25 @@ async def user_message(update: Update, context):
     if ticket_status[ticket_id] == "Pending":
         ticket_status[ticket_id] = "Processing"
 
-    header = ticket_header(ticket_id, ticket_status[ticket_id]) + user_info_block(user) + "Message:\n"
-    sent = None
-    text_content = None
+    header = (
+        ticket_header(ticket_id, ticket_status[ticket_id])
+        + user_info_block(user)
+        + "Message:\n"
+    )
 
     if update.message.text:
-        text_content = update.message.text
-        sent = await context.bot.send_message(chat_id=GROUP_ID, text=header + text_content)
-
-    if sent:
+        sent = await context.bot.send_message(
+            chat_id=GROUP_ID,
+            text=header + update.message.text
+        )
         group_message_map[sent.message_id] = ticket_id
-        ticket_messages[ticket_id].append((user.first_name, text_content))
+        ticket_messages[ticket_id].append((user.first_name, update.message.text))
 
 # ================= GROUP REPLY =================
 async def group_reply(update: Update, context):
     if not update.message.reply_to_message:
         return
+
     reply_id = update.message.reply_to_message.message_id
     if reply_id not in group_message_map:
         return
@@ -128,19 +131,20 @@ async def group_reply(update: Update, context):
             chat_id=user_id,
             text=f"🎫 Ticket ID: {ticket_id}\n\n{update.message.text}"
         )
-        ticket_messages[ticket_id].append(("BlockVeil Support", update.message.text))
+        ticket_messages[ticket_id].append(
+            ("BlockVeil Support", update.message.text)
+        )
 
 # ================= /close =================
 async def close_ticket(update: Update, context):
     if update.effective_chat.id != GROUP_ID:
         return
 
-    if context.args:
-        ticket_id = context.args[0]
-    else:
+    if not context.args:
         await update.message.reply_text("Usage: /close BV-XXXXX")
         return
 
+    ticket_id = context.args[0]
     if ticket_id not in ticket_status:
         await update.message.reply_text("❌ Ticket not found.")
         return
@@ -151,7 +155,11 @@ async def close_ticket(update: Update, context):
 
     await context.bot.send_message(
         chat_id=user_id,
-        text=f"🎫 Ticket ID: {ticket_id}\nStatus: Closed\n\nThank you for contacting BlockVeil Support."
+        text=(
+            f"🎫 Ticket ID: {ticket_id}\n"
+            "Status: Closed\n\n"
+            "Thank you for contacting BlockVeil Support."
+        )
     )
     await update.message.reply_text(f"✅ Ticket {ticket_id} closed.")
 
@@ -184,15 +192,16 @@ async def open_ticket(update: Update, context):
 
 # ================= /status =================
 async def status_ticket(update: Update, context):
-    if not context.args:
+    if not context.args or context.args[0] not in ticket_status:
+        await update.message.reply_text(
+            "By entering /status BV-XXXXX (replace with your own Ticket ID), "
+            "the user can check the current status of their support ticket."
+        )
         return
+
     ticket_id = context.args[0]
-
-    if ticket_id not in ticket_status:
-        await update.message.reply_text("❌ Ticket not found.")
-        return
-
     text = f"🎫 Ticket ID: {ticket_id}\nStatus: {ticket_status[ticket_id]}"
+
     if update.effective_chat.id == GROUP_ID:
         text += f"\nUser: @{ticket_username.get(ticket_id)}"
 
@@ -202,6 +211,7 @@ async def status_ticket(update: Update, context):
 async def list_tickets(update: Update, context):
     if update.effective_chat.id != GROUP_ID:
         return
+
     if not context.args:
         return
 
