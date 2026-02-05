@@ -100,11 +100,7 @@ async def user_message(update: Update, context):
     if ticket_status[ticket_id] == "Pending":
         ticket_status[ticket_id] = "Processing"
 
-    header = (
-        ticket_header(ticket_id, ticket_status[ticket_id])
-        + user_info_block(user)
-        + "Message:\n"
-    )
+    header = ticket_header(ticket_id, ticket_status[ticket_id]) + user_info_block(user) + "Message:\n"
 
     if update.message.text:
         sent = await context.bot.send_message(
@@ -131,22 +127,32 @@ async def group_reply(update: Update, context):
             chat_id=user_id,
             text=f"🎫 Ticket ID: {ticket_id}\n\n{update.message.text}"
         )
-        ticket_messages[ticket_id].append(
-            ("BlockVeil Support", update.message.text)
-        )
+        ticket_messages[ticket_id].append(("BlockVeil Support", update.message.text))
 
-# ================= /close =================
+# ================= /close (ARG OR REPLY) =================
 async def close_ticket(update: Update, context):
     if update.effective_chat.id != GROUP_ID:
         return
 
-    if not context.args:
-        await update.message.reply_text("Usage: /close BV-XXXXX")
+    ticket_id = None
+
+    # Case 1: /close BV-XXXXX
+    if context.args:
+        ticket_id = context.args[0]
+
+    # Case 2: reply + /close
+    elif update.message.reply_to_message:
+        reply_id = update.message.reply_to_message.message_id
+        ticket_id = group_message_map.get(reply_id)
+
+    if not ticket_id or ticket_id not in ticket_status:
+        await update.message.reply_text(
+            "❌ Ticket not found.\nUse /close BV-XXXXX or reply with /close"
+        )
         return
 
-    ticket_id = context.args[0]
-    if ticket_id not in ticket_status:
-        await update.message.reply_text("❌ Ticket not found.")
+    if ticket_status[ticket_id] == "Closed":
+        await update.message.reply_text("⚠️ Ticket already closed.")
         return
 
     user_id = ticket_user[ticket_id]
