@@ -11,7 +11,6 @@ from telegram.ext import (
     filters,
 )
 import os
-import itertools
 import random
 import string
 from io import BytesIO
@@ -33,8 +32,7 @@ group_message_map = {}           # group_msg_id -> ticket_id
 # ================= HELPERS =================
 def generate_ticket_id(length=8):
     chars = string.ascii_letters + string.digits + "*#@$&"
-    random_part = "".join(random.choice(chars) for _ in range(length))
-    return f"BV-{random_part}"
+    return "BV-" + "".join(random.choice(chars) for _ in range(length))
 
 def ticket_header(ticket_id, status):
     return f"🎫 Ticket ID: {ticket_id}\nStatus: {status}\n\n"
@@ -99,7 +97,10 @@ async def user_message(update: Update, context):
     user = update.message.from_user
 
     if user.id not in user_active_ticket:
-        await update.message.reply_text("❗ Please create a ticket first.")
+        await update.message.reply_text(
+            "❗ Please create a ticket first.\n\n"
+            "Click /start to create a ticket."
+        )
         return
 
     ticket_id = user_active_ticket[user.id]
