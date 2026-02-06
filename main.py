@@ -29,7 +29,7 @@ ticket_username = {}
 ticket_messages = {}
 user_tickets = {}
 group_message_map = {}
-ticket_created_at = {}  # New: Track when ticket was created
+ticket_created_at = {}
 
 # ================= HELPERS =================
 def generate_ticket_id(length=8):
@@ -170,7 +170,9 @@ async def user_message(update: Update, context):
 
     if sent:
         group_message_map[sent.message_id] = ticket_id
-        ticket_messages[ticket_id].append((user.first_name or user.username, log_text))
+        # Store user's actual username
+        sender_name = f"@{user.username}" if user.username else user.first_name or "User"
+        ticket_messages[ticket_id].append((sender_name, log_text))
 
 # ================= GROUP REPLY (TEXT + MEDIA) =================
 async def group_reply(update: Update, context):
@@ -426,7 +428,7 @@ async def list_tickets(update: Update, context):
 
     await update.message.reply_text(text, parse_mode="HTML")
 
-# ================= /export (UPDATED FORMAT) =================
+# ================= /export (FIXED FORMAT) =================
 async def export_ticket(update: Update, context):
     if update.effective_chat.id != GROUP_ID or not context.args:
         return
@@ -443,7 +445,9 @@ async def export_ticket(update: Update, context):
         if sender == "BlockVeil Support":
             label = "blockveil support team"
         else:
-            label = "user er username"
+            # Use the actual username stored (which already includes @ if available)
+            label = sender
+        
         buf.write(f"{label} : {message}\n".encode())
     
     buf.seek(0)
@@ -580,8 +584,8 @@ app.add_handler(CommandHandler("status", status_ticket))
 app.add_handler(CommandHandler("list", list_tickets))
 app.add_handler(CommandHandler("export", export_ticket))
 app.add_handler(CommandHandler("history", ticket_history))
-app.add_handler(CommandHandler("user", user_list))  # New
-app.add_handler(CommandHandler("which", which_user))  # New
+app.add_handler(CommandHandler("user", user_list))
+app.add_handler(CommandHandler("which", which_user))
 app.add_handler(CallbackQueryHandler(create_ticket, pattern="create_ticket"))
 app.add_handler(MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, user_message))
 app.add_handler(MessageHandler(filters.ChatType.GROUPS & ~filters.COMMAND, group_reply))
