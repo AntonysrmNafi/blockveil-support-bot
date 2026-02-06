@@ -1,14 +1,24 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    CallbackQueryHandler, filters
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
 )
-import os, random, string, html
-from io import BytesIO
+from telegram.ext import (
+    ApplicationBuilder,
+    MessageHandler,
+    CommandHandler,
+    CallbackQueryHandler,
+    filters,
+)
+import os
+import random
+import string
 
+# ================= ENV =================
 TOKEN = os.environ.get("BOT_TOKEN")
 GROUP_ID = int(os.environ.get("GROUP_ID"))
 
+# ================= STORAGE =================
 user_active_ticket = {}
 ticket_status = {}
 ticket_user = {}
@@ -17,235 +27,339 @@ ticket_messages = {}
 user_tickets = {}
 group_message_map = {}
 
+# ================= HELPERS =================
 def generate_ticket_id(length=8):
     chars = string.ascii_letters + string.digits + "*#@$&"
     return "BV-" + "".join(random.choice(chars) for _ in range(length))
 
-def code(tid):
-    return f"<code>{html.escape(tid)}</code>"
+def ticket_header(ticket_id, status):
+    return f"🎫 Ticket ID: {ticket_id}\nStatus: {status}\n\n"
 
-def user_info(user):
+def user_info_block(user):
     return (
         "User Information\n"
         f"• User ID   : {user.id}\n"
-        f"• Username  : @{user.username or ''}\n"
-        f"• Full Name : {user.first_name or ''}\n\n"
+        f"• Username  : @{user.username}\n"
+        f"• Full Name : {user.first_name}\n\n"
     )
 
-def header(tid, user):
-    return (
-        f"🎫 Ticket ID: {code(tid)}\n"
-        f"Status: {ticket_status[tid]}\n\n"
-        + user_info(user)
-        + "Message:\n"
-    )
-
+# ================= /start =================
 async def start(update: Update, context):
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎟️ Create Ticket", callback_data="create")]])
-    await update.message.reply_text("Welcome to BlockVeil Support.", reply_markup=kb)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎟️ Create Ticket", callback_data="create_ticket")]
+    ])
+    await update.message.reply_text(
+        "Hello Sir/Mam 👋\n\n"
+        "Welcome to BlockVeil Support.\n"
+        "Use the button below to create a support ticket.\n\n"
+        "📧 support.blockveil@protonmail.com\n\n"
+        "— BlockVeil Support Team",
+        reply_markup=keyboard
+    )
 
+# ================= CREATE TICKET =================
 async def create_ticket(update: Update, context):
-    q = update.callback_query
-    await q.answer()
-    u = q.from_user
-    if u.id in user_active_ticket:
-        await q.message.reply_text(f"{code(user_active_ticket[u.id])}", parse_mode="HTML")
-        return
-    tid = generate_ticket_id()
-    user_active_ticket[u.id] = tid
-    ticket_status[tid] = "Pending"
-    ticket_user[tid] = u.id
-    ticket_username[tid] = u.username or ""
-    ticket_messages[tid] = []
-    user_tickets.setdefault(u.id, []).append(tid)
-    await q.message.reply_text(f"{code(tid)}", parse_mode="HTML")
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
 
+    if user.id in user_active_ticket:
+        await query.message.reply_text(
+            f"🎫 You already have an active ticket:\n{user_active_ticket[user.id]}"
+        )
+        return
+
+    ticket_id = generate_ticket_id()
+    user_active_ticket[user.id] = ticket_id
+    ticket_status[ticket_id] = "Pending"
+    ticket_user[ticket_id] = user.id
+    ticket_username[ticket_id] = user.username
+    ticket_messages[ticket_id] = []
+    user_tickets.setdefault(user.id, []).append(ticket_id)
+
+    await query.message.reply_text(
+        f"🎫 Ticket Created: {ticket_id}\n"
+        "Status: Pending\n\n"
+        "Please send your message, photo, voice, video, or file."
+    )
+
+# ================= USER MESSAGE (TEXT + MEDIA) =================
 async def user_message(update: Update, context):
-    u = update.message.from_user
-    if u.id not in user_active_ticket:
-        await update.message.reply_text("❗ Please create a ticket first.")
-        return
-    tid = user_active_ticket[u.id]
-    if ticket_status[tid] == "Pending":
-        ticket_status[tid] = "Processing"
-    m = update.message
-    sent = None
-    if m.text:
-        sent = await context.bot.send_message(
-            GROUP_ID, header(tid, u) + html.escape(m.text), parse_mode="HTML"
-        )
-        ticket_messages[tid].append((u.first_name, m.text))
-    elif m.photo:
-        sent = await context.bot.send_photo(
-            GROUP_ID, m.photo[-1].file_id,
-            caption=header(tid, u) + "[Photo]", parse_mode="HTML"
-        )
-        ticket_messages[tid].append((u.first_name, "[Photo]"))
-    elif m.voice:
-        sent = await context.bot.send_voice(
-            GROUP_ID, m.voice.file_id,
-            caption=header(tid, u) + "[Voice]", parse_mode="HTML"
-        )
-        ticket_messages[tid].append((u.first_name, "[Voice]"))
-    elif m.video:
-        sent = await context.bot.send_video(
-            GROUP_ID, m.video.file_id,
-            caption=header(tid, u) + "[Video]", parse_mode="HTML"
-        )
-        ticket_messages[tid].append((u.first_name, "[Video]"))
-    elif m.document:
-        sent = await context.bot.send_document(
-            GROUP_ID, m.document.file_id,
-            caption=header(tid, u) + "[Document]", parse_mode="HTML"
-        )
-        ticket_messages[tid].append((u.first_name, "[Document]"))
-    if sent:
-        group_message_map[sent.message_id] = tid
+    user = update.message.from_user
 
+    if user.id not in user_active_ticket:
+        await update.message.reply_text(
+            "❗ Please create a ticket first.\n\n"
+            "Click /start to submit a new support ticket.\n\n"
+            "To track an existing ticket, please use the /status command."
+        )
+        return
+
+    ticket_id = user_active_ticket[user.id]
+    if ticket_status[ticket_id] == "Pending":
+        ticket_status[ticket_id] = "Processing"
+
+    header = ticket_header(ticket_id, ticket_status[ticket_id]) + user_info_block(user) + "Message:\n"
+
+    sent = None
+    log_text = ""
+
+    if update.message.text:
+        log_text = update.message.text
+        sent = await context.bot.send_message(
+            chat_id=GROUP_ID,
+            text=header + log_text
+        )
+
+    elif update.message.photo:
+        log_text = "[Photo]"
+        sent = await context.bot.send_photo(
+            chat_id=GROUP_ID,
+            photo=update.message.photo[-1].file_id,
+            caption=header + log_text
+        )
+
+    elif update.message.voice:
+        log_text = "[Voice Message]"
+        sent = await context.bot.send_voice(
+            chat_id=GROUP_ID,
+            voice=update.message.voice.file_id,
+            caption=header + log_text
+        )
+
+    elif update.message.video:
+        log_text = "[Video]"
+        sent = await context.bot.send_video(
+            chat_id=GROUP_ID,
+            video=update.message.video.file_id,
+            caption=header + log_text
+        )
+
+    elif update.message.document:
+        log_text = "[Document]"
+        sent = await context.bot.send_document(
+            chat_id=GROUP_ID,
+            document=update.message.document.file_id,
+            caption=header + log_text
+        )
+
+    if sent:
+        group_message_map[sent.message_id] = ticket_id
+        ticket_messages[ticket_id].append((user.first_name, log_text))
+
+# ================= GROUP REPLY (TEXT + MEDIA) =================
 async def group_reply(update: Update, context):
     if not update.message.reply_to_message:
         return
-    mid = update.message.reply_to_message.message_id
-    if mid not in group_message_map:
-        return
-    tid = group_message_map[mid]
-    uid = ticket_user[tid]
-    m = update.message
-    prefix = f"🎫 Ticket ID: {code(tid)}\n\n"
-    if m.text:
-        await context.bot.send_message(uid, prefix + html.escape(m.text), parse_mode="HTML")
-        ticket_messages[tid].append(("BlockVeil Support", m.text))
-    elif m.photo:
-        await context.bot.send_photo(uid, m.photo[-1].file_id, caption=prefix, parse_mode="HTML")
-        ticket_messages[tid].append(("BlockVeil Support", "[Photo]"))
-    elif m.voice:
-        await context.bot.send_voice(uid, m.voice.file_id, caption=prefix, parse_mode="HTML")
-        ticket_messages[tid].append(("BlockVeil Support", "[Voice]"))
-    elif m.video:
-        await context.bot.send_video(uid, m.video.file_id, caption=prefix, parse_mode="HTML")
-        ticket_messages[tid].append(("BlockVeil Support", "[Video]"))
-    elif m.document:
-        await context.bot.send_document(uid, m.document.file_id, caption=prefix, parse_mode="HTML")
-        ticket_messages[tid].append(("BlockVeil Support", "[Document]"))
 
-async def status_cmd(update: Update, context):
-    if not context.args or context.args[0] not in ticket_status:
+    reply_id = update.message.reply_to_message.message_id
+    if reply_id not in group_message_map:
         return
-    tid = context.args[0]
-    await update.message.reply_text(
-        f"🎫 Ticket ID: {code(tid)}\nStatus: {ticket_status[tid]}",
-        parse_mode="HTML"
+
+    ticket_id = group_message_map[reply_id]
+    user_id = ticket_user[ticket_id]
+
+    prefix = f"🎫 Ticket ID: {ticket_id}\n\n"
+    log_text = ""
+
+    if update.message.text:
+        log_text = update.message.text
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=prefix + log_text
+        )
+
+    elif update.message.photo:
+        log_text = "[Photo]"
+        await context.bot.send_photo(
+            chat_id=user_id,
+            photo=update.message.photo[-1].file_id,
+            caption=prefix
+        )
+
+    elif update.message.voice:
+        log_text = "[Voice Message]"
+        await context.bot.send_voice(
+            chat_id=user_id,
+            voice=update.message.voice.file_id,
+            caption=prefix
+        )
+
+    elif update.message.video:
+        log_text = "[Video]"
+        await context.bot.send_video(
+            chat_id=user_id,
+            video=update.message.video.file_id,
+            caption=prefix
+        )
+
+    elif update.message.document:
+        log_text = "[Document]"
+        await context.bot.send_document(
+            chat_id=user_id,
+            document=update.message.document.file_id,
+            caption=prefix
+        )
+
+    ticket_messages[ticket_id].append(("BlockVeil Support", log_text))
+
+# ================= /close (ARG OR REPLY) =================
+async def close_ticket(update: Update, context):
+    if update.effective_chat.id != GROUP_ID:
+        return
+
+    ticket_id = None
+
+    if context.args:
+        ticket_id = context.args[0]
+    elif update.message.reply_to_message:
+        ticket_id = group_message_map.get(update.message.reply_to_message.message_id)
+
+    if not ticket_id or ticket_id not in ticket_status:
+        await update.message.reply_text(
+            "❌ Ticket not found.\nUse /close BV-XXXXX or reply with /close"
+        )
+        return
+
+    if ticket_status[ticket_id] == "Closed":
+        await update.message.reply_text("⚠️ Ticket already closed.")
+        return
+
+    user_id = ticket_user[ticket_id]
+    ticket_status[ticket_id] = "Closed"
+    user_active_ticket.pop(user_id, None)
+
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=f"🎫 Ticket ID: {ticket_id}\nStatus: Closed"
     )
+    await update.message.reply_text(f"✅ Ticket {ticket_id} closed.")
 
-async def send_cmd(update: Update, context):
-    if update.effective_chat.id != GROUP_ID or len(context.args) < 2:
+# ================= /send =================
+async def send_direct(update: Update, context):
+    if update.effective_chat.id != GROUP_ID:
         return
+
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Usage:\n"
+            "/send BV-XXXXX <message>\n"
+            "/send @username <message>\n"
+            "/send user_id <message>"
+        )
+        return
+
     target = context.args[0]
-    text = html.escape(" ".join(context.args[1:]))
-    targets = set()
-    if target == "@all":
-        targets = set(user_tickets.keys())
-    elif target.startswith("BV-") and target in ticket_status and ticket_status[target] != "Closed":
-        targets.add(ticket_user[target])
+    message = " ".join(context.args[1:])
+    user_id = None
+    ticket_id = None
+
+    if target.startswith("BV-"):
+        ticket_id = target
+        if ticket_id not in ticket_status:
+            await update.message.reply_text("❌ Ticket not found.")
+            return
+        if ticket_status[ticket_id] == "Closed":
+            await update.message.reply_text("⚠️ Ticket is closed.")
+            return
+        user_id = ticket_user[ticket_id]
+
     elif target.startswith("@"):
-        for t, u in ticket_username.items():
-            if u.lower() == target[1:].lower():
-                targets.add(ticket_user[t])
+        username = target[1:]
+        for tid, uname in ticket_username.items():
+            if uname == username:
+                user_id = ticket_user[tid]
+                break
+
     else:
         try:
-            targets.add(int(target))
+            user_id = int(target)
         except:
-            pass
-    for uid in targets:
-        await context.bot.send_message(uid, text)
+            return
 
-async def close_cmd(update: Update, context):
-    tid = None
-    if context.args:
-        tid = context.args[0]
-    elif update.message.reply_to_message:
-        tid = group_message_map.get(update.message.reply_to_message.message_id)
-    if not tid or tid not in ticket_status:
+    if not user_id:
+        await update.message.reply_text("❌ User not found.")
         return
-    ticket_status[tid] = "Closed"
-    uid = ticket_user[tid]
-    user_active_ticket.pop(uid, None)
-    await context.bot.send_message(uid, f"{code(tid)}", parse_mode="HTML")
 
-async def open_cmd(update: Update, context):
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=f"📩 BlockVeil Support:\n\n{message}"
+    )
+    await update.message.reply_text("✅ Message sent.")
+
+# ================= /open =================
+async def open_ticket(update: Update, context):
+    if update.effective_chat.id != GROUP_ID:
+        return
+
     if not context.args:
         return
-    tid = context.args[0]
-    if tid in ticket_status and ticket_status[tid] == "Closed":
-        ticket_status[tid] = "Processing"
-        user_active_ticket[ticket_user[tid]] = tid
 
-async def export_cmd(update: Update, context):
+    ticket_id = context.args[0]
+    if ticket_id not in ticket_status:
+        await update.message.reply_text("❌ Ticket not found.")
+        return
+
+    if ticket_status[ticket_id] != "Closed":
+        await update.message.reply_text("⚠️ Ticket already open.")
+        return
+
+    ticket_status[ticket_id] = "Processing"
+    user_active_ticket[ticket_user[ticket_id]] = ticket_id
+    await update.message.reply_text(f"✅ Ticket {ticket_id} reopened.")
+
+# ================= /status =================
+async def status_ticket(update: Update, context):
+    if not context.args or context.args[0] not in ticket_status:
+        await update.message.reply_text(
+            "Use /status BV-XXXXX to check your ticket status."
+        )
+        return
+
+    ticket_id = context.args[0]
+    text = f"🎫 Ticket ID: {ticket_id}\nStatus: {ticket_status[ticket_id]}"
+    if update.effective_chat.id == GROUP_ID:
+        text += f"\nUser: @{ticket_username.get(ticket_id)}"
+
+    await update.message.reply_text(text)
+
+# ================= /list =================
+async def list_tickets(update: Update, context):
+    if update.effective_chat.id != GROUP_ID:
+        return
     if not context.args:
         return
-    tid = context.args[0]
-    buf = BytesIO()
-    for a, b in ticket_messages.get(tid, []):
-        buf.write(f"{a}: {b}\n".encode())
-    buf.seek(0)
-    buf.name = f"{tid}.txt"
-    await context.bot.send_document(GROUP_ID, buf)
 
-async def history_cmd(update: Update, context):
-    if not context.args:
-        return
-    target = context.args[0]
-    uid = int(target) if target.isdigit() else None
-    if target.startswith("@"):
-        for t, u in ticket_username.items():
-            if u.lower() == target[1:].lower():
-                uid = ticket_user[t]
-    if uid not in user_tickets:
-        return
-    text = ""
-    for i, t in enumerate(user_tickets[uid], 1):
-        text += f"{i}. {code(t)}\n"
-    await update.message.reply_text(text, parse_mode="HTML")
-
-async def user_cmd(update: Update, context):
-    buf = BytesIO()
-    seen = set()
-    i = 1
-    for tid, uid in ticket_user.items():
-        if uid in seen:
-            continue
-        seen.add(uid)
-        buf.write(f"{i} : @{ticket_username[tid]} — {uid}\n".encode())
-        i += 1
-    buf.seek(0)
-    buf.name = "users.txt"
-    await context.bot.send_document(GROUP_ID, buf)
-
-async def list_cmd(update: Update, context):
-    if not context.args:
-        return
     mode = context.args[0].lower()
-    out = []
-    for t, s in ticket_status.items():
-        if mode in ["open", "opened"] and s != "Closed":
-            out.append(t)
-        if mode in ["close", "closed"] and s == "Closed":
-            out.append(t)
-    await update.message.reply_text("\n".join(code(x) for x in out), parse_mode="HTML")
+    data = []
 
+    for tid, st in ticket_status.items():
+        if mode == "open" and st != "Closed":
+            data.append((tid, ticket_username.get(tid)))
+        elif mode == "close" and st == "Closed":
+            data.append((tid, ticket_username.get(tid)))
+
+    if not data:
+        await update.message.reply_text("No tickets found.")
+        return
+
+    text = "📂 Open Tickets\n\n" if mode == "open" else "📁 Closed Tickets\n\n"
+    for i, (tid, uname) in enumerate(data, 1):
+        text += f"{i}. {tid} – @{uname}\n"
+
+    await update.message.reply_text(text)
+
+# ================= INIT =================
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(create_ticket, pattern="create"))
-app.add_handler(CommandHandler("status", status_cmd))
-app.add_handler(CommandHandler("send", send_cmd))
-app.add_handler(CommandHandler("close", close_cmd))
-app.add_handler(CommandHandler("open", open_cmd))
-app.add_handler(CommandHandler("export", export_cmd))
-app.add_handler(CommandHandler("history", history_cmd))
-app.add_handler(CommandHandler("user", user_cmd))
-app.add_handler(CommandHandler("list", list_cmd))
-app.add_handler(MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, user_message))
-app.add_handler(MessageHandler(filters.ChatType.GROUPS & ~filters.COMMAND, group_reply))
+app.add_handler(CommandHandler("close", close_ticket))
+app.add_handler(CommandHandler("open", open_ticket))
+app.add_handler(CommandHandler("send", send_direct))
+app.add_handler(CommandHandler("status", status_ticket))
+app.add_handler(CommandHandler("list", list_tickets))
+app.add_handler(CallbackQueryHandler(create_ticket, pattern="create_ticket"))
+app.add_handler(MessageHandler(filters.ChatType.PRIVATE, user_message))
+app.add_handler(MessageHandler(filters.ChatType.GROUPS, group_reply))
 
 app.run_polling()
