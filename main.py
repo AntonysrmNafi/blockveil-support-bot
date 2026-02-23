@@ -313,7 +313,7 @@ async def request_close(update: Update, context):
     username = f"@{user.username}" if user.username else "N/A"
     notification = (
         f"🔔 <b>Ticket Close Request</b>\n\n"
-        f"User {user.id} (@{username}) has requested to close ticket ID {code(ticket_id)}.\n\n"
+        f"User {user.id} ({username}) has requested to close ticket ID {code(ticket_id)}.\n\n"
         f"Please review and properly close the ticket."
     )
     
