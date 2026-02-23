@@ -269,6 +269,67 @@ async def close_ticket(update: Update, context):
     )
     await update.message.reply_text(f" Ticket {code(ticket_id)} closed.", parse_mode="HTML")
 
+# ================= /requestclose (NEW) =================
+async def request_close(update: Update, context):
+    """User command to request ticket closure"""
+    user = update.message.from_user
+    
+    # Check if user has arguments
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide a ticket ID.\n"
+            "Usage: /requestclose BV-XXXXX",
+            parse_mode="HTML"
+        )
+        return
+    
+    ticket_id = context.args[0]
+    
+    # Verify ticket exists
+    if ticket_id not in ticket_status:
+        await update.message.reply_text(
+            f"❌ Ticket {code(ticket_id)} not found.",
+            parse_mode="HTML"
+        )
+        return
+    
+    # Verify ticket belongs to this user
+    if ticket_user.get(ticket_id) != user.id:
+        await update.message.reply_text(
+            "❌ This ticket does not belong to you.",
+            parse_mode="HTML"
+        )
+        return
+    
+    # Check if ticket is already closed
+    if ticket_status[ticket_id] == "Closed":
+        await update.message.reply_text(
+            f"⚠️ Ticket {code(ticket_id)} is already closed.",
+            parse_mode="HTML"
+        )
+        return
+    
+    # Send notification to management group
+    username = f"@{user.username}" if user.username else "N/A"
+    notification = (
+        f"🔔 <b>Ticket Close Request</b>\n\n"
+        f"User {user.id} (@{username}) has requested to close ticket ID {code(ticket_id)}.\n\n"
+        f"Please review and properly close the ticket."
+    )
+    
+    await context.bot.send_message(
+        chat_id=GROUP_ID,
+        text=notification,
+        parse_mode="HTML"
+    )
+    
+    # Confirm to user
+    await update.message.reply_text(
+        f"✅ Your request to close ticket {code(ticket_id)} has been sent to the support team.\n"
+        f"They will review and close it shortly.",
+        parse_mode="HTML"
+    )
+
 # ================= /send =================
 async def send_direct(update: Update, context):
     if update.effective_chat.id != GROUP_ID:
@@ -586,6 +647,7 @@ app.add_handler(CommandHandler("export", export_ticket))
 app.add_handler(CommandHandler("history", ticket_history))
 app.add_handler(CommandHandler("user", user_list))
 app.add_handler(CommandHandler("which", which_user))
+app.add_handler(CommandHandler("requestclose", request_close))  # New command
 app.add_handler(CallbackQueryHandler(create_ticket, pattern="create_ticket"))
 app.add_handler(MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, user_message))
 app.add_handler(MessageHandler(filters.ChatType.GROUPS & ~filters.COMMAND, group_reply))
