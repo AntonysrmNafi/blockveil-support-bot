@@ -658,7 +658,7 @@ async def send_direct(update: Update, context):
         )
         await update.message.reply_text("✅ Message sent successfully.", parse_mode="HTML")
     except Exception as e:
-        await update.message.reply_text(f"❌ Failed to send: {e}", parse_mode="HTML")
+        await update.message.reply_text(f"No user was found in the database based on the information you provided to send the message. {e}", parse_mode="HTML")
 
 # ================= /open =================
 async def open_ticket(update: Update, context):
