@@ -18,6 +18,19 @@ from io import BytesIO
 from datetime import datetime
 import time
 
+# ================= TIMEZONE (BST: UTC+6) =================
+def get_bst_now():
+    """Return current time in Bangladesh Standard Time (BST) as formatted string."""
+    try:
+        # Python 3.9+ zoneinfo
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Dhaka")).strftime("%Y-%m-%d %H:%M:%S")
+    except ImportError:
+        # Fallback to pytz
+        import pytz
+        tz = pytz.timezone('Asia/Dhaka')
+        return datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+
 # ================= ENV =================
 TOKEN = os.environ.get("BOT_TOKEN")
 GROUP_ID = int(os.environ.get("GROUP_ID"))
@@ -114,7 +127,7 @@ async def create_ticket(update: Update, context):
     ticket_user[ticket_id] = user.id
     ticket_username[ticket_id] = user.username or ""
     ticket_messages[ticket_id] = []
-    ticket_created_at[ticket_id] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ticket_created_at[ticket_id] = get_bst_now()  # BST time
     user_tickets.setdefault(user.id, []).append(ticket_id)
     # Store latest username
     user_latest_username[user.id] = user.username or ""
@@ -164,7 +177,7 @@ async def user_message(update: Update, context):
 
     sent = None
     log_text = ""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = get_bst_now()  # BST time
 
     # Handle all message types (fix bug 3)
     if update.message.text:
@@ -320,7 +333,7 @@ async def group_reply(update: Update, context):
     prefix = f"🎫 Ticket ID: {code(ticket_id)}\n\n"
     caption_text = update.message.caption or ""  # Fix bug 5: capture caption
     safe_caption = html.escape(caption_text) if caption_text else ""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = get_bst_now()  # BST time
 
     log_text = ""
 
@@ -681,7 +694,7 @@ async def status_ticket(update: Update, context):
     text = f"🎫 Ticket ID: {code(ticket_id)}\nStatus: {ticket_status[ticket_id]}"
     # Fix bug 28: show creation time
     if ticket_id in ticket_created_at:
-        text += f"\nCreated at: {ticket_created_at[ticket_id]}"
+        text += f"\nCreated at: {ticket_created_at[ticket_id]} (BST)"
     if update.effective_chat.id == GROUP_ID:
         text += f"\nUser: @{ticket_username.get(ticket_id, 'N/A')}"
 
@@ -782,7 +795,7 @@ async def ticket_history(update: Update, context):
         created = ticket_created_at.get(tid, "")
         text += f"{i}. {code(tid)} - {status}"
         if created:
-            text += f" (Created: {created})"
+            text += f" (Created: {created} BST)"
         text += "\n"
 
     await update.message.reply_text(text, parse_mode="HTML")
@@ -870,7 +883,7 @@ async def which_user(update: Update, context):
         created = ticket_created_at.get(ticket_id, "")
         response += f"{i}. {code(ticket_id)} - {status}"
         if created:
-            response += f" (Created: {created})"
+            response += f" (Created: {created} BST)"
         response += "\n"
 
     await update.message.reply_text(response, parse_mode="HTML")
