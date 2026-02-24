@@ -870,7 +870,7 @@ async def which_user(update: Update, context):
     user_ticket_list = user_tickets.get(user_id, [])
 
     if not user_ticket_list:
-        await update.message.reply_text("❌ No tickets found for this user.", parse_mode="HTML")
+        await update.message.reply_text("No user was found in the database based on the information you provided.", parse_mode="HTML")
         return
 
     response = f"👤 <b>User Information</b>\n\n"
